@@ -180,11 +180,9 @@ class BigramLanguageModel(nn.Module):
     idx = torch.zeros((1, 1), dtype=torch.long, device=device)
     return decode(self.generate(idx, n)[0].tolist())
 
-if __name__ == '__main__':
+def train(model):
+  model.train()
 
-  model = BigramLanguageModel()
-  m = model.to(device)
-  
   optim = torch.optim.AdamW(model.parameters(), lr=lr)
 
   pbar = tqdm(range(steps), desc='Train', ncols=100)
@@ -209,3 +207,24 @@ if __name__ == '__main__':
   print(model.sample())
 
   torch.save(model.state_dict(), 'model.pth')
+
+def inference(model):
+  
+  sd = torch.load('model.pth', map_location='cpu')
+
+  model.load_state_dict(sd)
+
+  model = model.to(device)
+
+  model.eval()
+
+  print()
+  print(model.sample(n=5000))
+
+
+if __name__ == '__main__':
+
+  model = BigramLanguageModel()
+  m = model.to(device)
+
+  train(model)
