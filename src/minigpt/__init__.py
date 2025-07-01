@@ -96,7 +96,7 @@ class Head(nn.Module):
     # (B, T, head_size) @ (B, head_size, T) -> (B, T, T)
     wei = q @ k.transpose(-2, -1) * C**-0.5
 
-    wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
+    wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))  # type: ignore
     wei = F.softmax(wei, dim=-1)
     wei = self.dropout(wei)
 
