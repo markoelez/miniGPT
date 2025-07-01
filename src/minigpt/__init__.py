@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
+import os
+
 import torch
-import random
-from tqdm import tqdm
 import torch.nn as nn
+from tqdm import tqdm
 from torch.nn import functional as F
 
-
-device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-#device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 torch.manual_seed(1337)
 
@@ -24,11 +23,13 @@ n_layer = 12
 n_head = 8
 dropout = 0.2
 
+
 def load(fname):
-  with open('data.txt', 'r') as f:
+  with open("data.txt", "r") as f:
     return f.read()
 
-text = load('data.txt')
+
+text = load("data.txt")
 
 vocab = sorted(set(text))
 
@@ -37,29 +38,34 @@ vocab_size = len(vocab)
 stoi = {ch: i for i, ch in enumerate(vocab)}
 itos = {i: ch for i, ch in enumerate(vocab)}
 
+
 def encode(s: str) -> list[int]:
   return [stoi[x] for x in s]
 
+
 def decode(a: list[int]) -> str:
-  return ''.join([itos[x] for x in a])
+  return "".join([itos[x] for x in a])
+
 
 dat = torch.tensor(encode(text), dtype=torch.long).to(device)
 
 i = int(tts * len(dat))
 train_dat, test_dat = dat[:i], dat[i:]
 
-def get_batch(phase: str = 'train'):
-  dat = train_dat if phase == 'train' else test_dat
+
+def get_batch(phase: str = "train"):
+  dat = train_dat if phase == "train" else test_dat
   ix = torch.randint(len(dat) - block_size, (batch_size,)).to(device)
-  x = torch.stack([dat[i:i+block_size] for i in ix]).to(device)
-  y = torch.stack([dat[i+1:i+block_size+1] for i in ix]).to(device)
+  x = torch.stack([dat[i : i + block_size] for i in ix]).to(device)
+  y = torch.stack([dat[i + 1 : i + block_size + 1] for i in ix]).to(device)
   return x, y
+
 
 @torch.no_grad()
 def estimate_loss(model):
   out = {}
   model.eval()
-  for split in ('train', 'val'):
+  for split in ("train", "val"):
     losses = torch.zeros(n_eval, device=device)
     for k in range(n_eval):
       xb, yb = get_batch()
@@ -69,26 +75,28 @@ def estimate_loss(model):
   model.train()
   return out
 
+
 class Head(nn.Module):
   """one head of self attention"""
+
   def __init__(self, head_size):
     super().__init__()
     self.key = nn.Linear(n_embed, head_size, bias=False)
     self.query = nn.Linear(n_embed, head_size, bias=False)
     self.value = nn.Linear(n_embed, head_size, bias=False)
-    self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
+    self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
     self.dropout = nn.Dropout(dropout)
 
   def forward(self, x):
     B, T, C = x.shape
 
-    k = self.key(x) # (B, T, head_size)
-    q = self.query(x) # (B, T, head_size)
+    k = self.key(x)  # (B, T, head_size)
+    q = self.query(x)  # (B, T, head_size)
 
     # (B, T, head_size) @ (B, head_size, T) -> (B, T, T)
     wei = q @ k.transpose(-2, -1) * C**-0.5
 
-    wei = wei.masked_fill(self.tril[:T,:T] == 0, float('-inf'))
+    wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
     wei = F.softmax(wei, dim=-1)
     wei = self.dropout(wei)
 
@@ -97,8 +105,10 @@ class Head(nn.Module):
 
     return out
 
+
 class MultiHeadAttention(nn.Module):
   """multiple heads of self attention"""
+
   def __init__(self, n_head, head_size):
     super().__init__()
     self.heads = nn.ModuleList([Head(head_size) for _ in range(n_head)])
@@ -110,6 +120,7 @@ class MultiHeadAttention(nn.Module):
     out = self.proj(out)
     out = self.dropout(out)
     return out
+
 
 class FeedForward(nn.Module):
   def __init__(self):
@@ -124,6 +135,7 @@ class FeedForward(nn.Module):
   def forward(self, x):
     return self.net(x)
 
+
 class Block(nn.Module):
   def __init__(self, n_embed, n_head):
     super().__init__()
@@ -137,6 +149,7 @@ class Block(nn.Module):
     x = x + self.sa(self.ln1(x))
     x = x + self.ffwd(self.ln2(x))
     return x
+
 
 class BigramLanguageModel(nn.Module):
   def __init__(self):
@@ -156,13 +169,14 @@ class BigramLanguageModel(nn.Module):
     x = tok_emb + pos_emb
     x = self.blocks(x)
     x = self.ln_f(x)
-    logits = self.lm_head(x) 
+    logits = self.lm_head(x)
 
-    if targets is None: return logits, None
+    if targets is None:
+      return logits, None
 
     B, T, C = logits.shape
-    logits = logits.view(B*T, C)
-    targets = targets.view(B*T)
+    logits = logits.view(B * T, C)
+    targets = targets.view(B * T)
     loss = F.cross_entropy(logits, targets)
     return logits, loss
 
@@ -180,25 +194,23 @@ class BigramLanguageModel(nn.Module):
     idx = torch.zeros((1, 1), dtype=torch.long, device=device)
     return decode(self.generate(idx, n)[0].tolist())
 
+
 def train(model):
   model.train()
 
   optim = torch.optim.AdamW(model.parameters(), lr=lr)
 
-  pbar = tqdm(range(steps), desc='Train', ncols=100)
+  pbar = tqdm(range(steps), desc="Train", ncols=100)
 
   for i in pbar:
     if i % eval_interval == 0 or i == steps - 1:
       loss = estimate_loss(model)
-      pbar.set_postfix({
-        'train_loss': f'{loss["train"]:.4f}',
-        'val_loss': f'{loss["val"]:.4f}'
-      })
+      pbar.set_postfix({"train_loss": f"{loss['train']:.4f}", "val_loss": f"{loss['val']:.4f}"})
 
     xb, yb = get_batch()
 
     logits, loss = model(xb, yb)
-    
+
     optim.zero_grad(set_to_none=True)
     loss.backward()
     optim.step()
@@ -206,11 +218,11 @@ def train(model):
   print()
   print(model.sample())
 
-  torch.save(model.state_dict(), 'model.pth')
+  torch.save(model.state_dict(), "model.pth")
+
 
 def inference(model):
-  
-  sd = torch.load('model.pth', map_location='cpu')
+  sd = torch.load("model.pth", map_location="cpu")
 
   model.load_state_dict(sd)
 
@@ -219,12 +231,27 @@ def inference(model):
   model.eval()
 
   print()
-  print(model.sample(n=5000))
+  print(model.sample(n=20000))
 
 
-if __name__ == '__main__':
+def main():
+  """Entry-point used by the CLI.
 
-  model = BigramLanguageModel()
-  m = model.to(device)
+  If a trained checkpoint (``model.pth``) exists we run inference directly.
+  Otherwise we train a new model first and then run inference. This removes the
+  need for a manual training step on a fresh checkout and prevents a
+  FileNotFoundError when the weights are missing.
+  """
 
-  train(model)
+  model = BigramLanguageModel().to(device)
+
+  model_path = "model.pth"
+
+  if os.path.exists(model_path):
+    # A trained model already exists – just sample from it.
+    inference(model)
+  else:
+    print(f"No saved model found at '{model_path}'. Training a new model...")
+    train(model)
+    # After training, generate a sample so users immediately get feedback.
+    inference(model)
